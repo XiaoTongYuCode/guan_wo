@@ -1,0 +1,111 @@
+# Cursor Rules - Python 代码规范
+
+python运行优先使用项目venv虚拟环境、python3
+
+## 导包规范 (Import Guidelines)
+
+所有Python文件的导包语句必须按照以下顺序和格式组织，各组之间用空行分隔：
+
+### 1. 标准库导包 (Standard Library Imports)
+```python
+# 标准库导包
+import os                    # Python内置模块
+import sys                   # Python内置模块
+from datetime import datetime # Python内置模块
+from typing import Optional  # Python内置模块
+```
+
+### 2. 第三方库导包 (Third-party Library Imports)  
+```python
+# 第三方库导包
+import requests              # 通过pip安装的外部库
+from fastapi import FastAPI  # 通过pip安装的外部库
+from pydantic import BaseModel # 通过pip安装的外部库
+```
+
+### 3. 项目内部导包 (Project/Local Imports)
+```python
+# 项目内部导包
+from models import UserInfo     # 项目内自定义模块
+from config import settings    # 项目内自定义模块
+from utils import helper_func   # 项目内自定义模块
+```
+
+## 导包规则详细说明
+
+### 分类标准：
+- **标准库**：Python自带的模块（os, sys, datetime, typing, json, logging等）
+- **第三方库**：通过pip/conda等安装的外部库（requests, fastapi, pydantic, numpy等）
+- **项目内部**：当前项目中自己编写的模块和包
+
+### 格式规则：
+1. **分组顺序**：标准库 → 第三方库 → 项目内部
+2. **组内排序**：按字母顺序排列
+3. **分隔符**：各组之间必须有一个空行
+4. **注释标识**：每组开头必须有对应的中文注释
+5. **导入风格**：
+   - 优先使用 `import module` 形式
+   - 当需要特定函数/类时使用 `from module import item`
+   - 避免使用 `import *`
+
+## 判断库类型的方法
+
+### 标准库识别：
+- Python自带，无需安装
+- 常见的有：os, sys, json, logging, datetime, typing, functools, collections等
+- 可通过 `python -c "import xxx"` 在纯净环境中测试
+
+### 第三方库识别：
+- 需要通过pip/conda安装
+- 在requirements.txt或pyproject.toml中列出
+- 常见的有：requests, fastapi, pydantic, numpy, pandas等
+
+### 项目内部识别：
+- 相对导入（from .module import xxx）
+- 项目根目录下的自定义模块
+- 当前工作目录中的.py文件
+
+## 示例文件格式
+
+```python
+"""
+模块文档字符串
+"""
+# 标准库导包
+import os
+import logging
+from datetime import datetime
+from typing import Optional
+
+# 第三方库导包
+import requests
+from fastapi import APIRouter, HTTPException
+
+# 项目内部导包
+from models import UserInfo
+from config import settings
+from utils import tyc_auth_required
+
+# 其余代码...
+```
+
+## 强制执行
+
+- 所有新文件必须遵循此规范
+- 修改现有文件时，同时调整导包格式
+- Code Review时检查导包格式
+- 新增依赖时，按分类规则放入对应区块
+
+## 自动格式化配置（可选）
+
+建议在项目中添加 `pyproject.toml` 配置，工具会自动识别库类型：
+
+```toml
+[tool.isort]
+profile = "black"
+known_first_party = ["models", "config", "utils", "routers"]  # 根据项目调整
+sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+import_heading_stdlib = "标准库导包"
+import_heading_thirdparty = "第三方库导包" 
+import_heading_firstparty = "项目内部导包"
+``` 

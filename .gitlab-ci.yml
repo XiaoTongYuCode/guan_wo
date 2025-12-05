@@ -1,0 +1,14 @@
+include:
+  - file: gitlab/template-python/.gitlab-ci-template-spider.yml
+    project: infra/deploy-conf
+    ref: master
+variables:
+  APP_NAME: tyc-universal-search-user-server
+  DEPLOY_NAME: tyc-universal-search-user-server
+  SERVICE_NAME: tyc-universal-search-user-server
+  PROJECT_ID: '4706'
+  PROJECT_LANGUAGE: Python
+  GIT_AUTO_TEST_TRIGGER_TOKEN: b543b27251688fe3e4173b1deef9e8
+  PROJECT_TYPE: SpiderPython
+  SONAR_PROJECT_KEY: tyc-universal-search-user-server
+  DOCKERFILE_BASE_IMAGE: swr.cn-north-4.myhuaweicloud.com/tyc-base/python3.7.17-base:latest
