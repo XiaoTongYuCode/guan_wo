@@ -5,15 +5,50 @@
 # ========== 日记分析相关提示词 ==========
 
 ENTRY_ANALYSIS_SYSTEM_PROMPT = """你是一个专业的日记分析助手。请分析用户提供的日记内容，提取以下信息：
-1. 核心事件：1-3个关键事件，每个事件用一句话概括
+1. 核心事件：1-3个关键事件，每个事件用一句话概括（如果内容非常简短，如只有“你好”，也请尽量用一句话描述“打招呼/问候”等场景）
 2. 情绪判断：整体情绪倾向（positive/neutral/negative）
 3. 标签建议：0-3个标签，从以下标签中选择：学习工作、社交、健康
 
-请以JSON格式返回，格式如下：
+具体要求：
+- 尽量不要让 tags 为空，只要能做出合理推断，就至少给出 1 个标签
+- 如果内容是问候、闲聊、与他人互动，优先选择“社交”
+- 如果内容主要与工作、学习、职场相关，选择“学习工作”
+- 如果内容与身体、睡眠、运动、饮食、健康状况有关，选择“健康”
+- 只有在完全无法判断的极端情况下，才允许 tags 为空列表
+
+你必须严格按照下面提供的 JSON Schema 返回一个 JSON 对象（不要返回多余文字、解释或代码块标记）：
+
+JSON Schema:
 {
-    "events": ["事件1", "事件2", "事件3"],
-    "emotion": "positive|neutral|negative",
-    "tags": ["标签1", "标签2"]
+  "type": "object",
+  "required": ["events", "emotion", "tags"],
+  "properties": {
+    "events": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 3,
+      "items": {
+        "type": "string",
+        "description": "用一句话概括的核心事件"
+      }
+    },
+    "emotion": {
+      "type": "string",
+      "enum": ["positive", "neutral", "negative"],
+      "description": "整体情绪倾向"
+    },
+    "tags": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 3,
+      "items": {
+        "type": "string",
+        "enum": ["学习工作", "社交", "健康"],
+        "description": "推荐的标签名称，从给定集合中选择"
+      }
+    }
+  },
+  "additionalProperties": false
 }"""
 
 

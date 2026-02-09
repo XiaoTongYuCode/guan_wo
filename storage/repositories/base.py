@@ -31,7 +31,7 @@ class BaseRepository(Generic[ModelType], ABC):
         self.session = session
         self.model = model
     
-    async def get_by_id(self, id: int | str) -> Optional[ModelType]:
+    async def get_by_id(self, id) -> Optional[ModelType]:
         """
         根据ID获取单条记录
         
@@ -59,9 +59,9 @@ class BaseRepository(Generic[ModelType], ABC):
         """
         query = select(self.model)
         
-        if offset:
+        if offset is not None:
             query = query.offset(offset)
-        if limit:
+        if limit is not None:
             query = query.limit(limit)
             
         result = await self.session.execute(query)
@@ -88,19 +88,30 @@ class BaseRepository(Generic[ModelType], ABC):
         根据ID更新记录
         
         Args:
-            id: 记录ID
+            id: 记录ID（支持int或str类型）
             **kwargs: 要更新的字段值
             
         Returns:
             更新后的模型实例或None
         """
-        result = await self.session.execute(
+        # MySQL不支持RETURNING子句，所以先执行UPDATE，然后重新查询
+        # 检查记录是否存在
+        existing = await self.get_by_id(id)
+        if not existing:
+            return None
+        
+        # 执行UPDATE
+        await self.session.execute(
             update(self.model)
             .where(self.model.id == id)
             .values(**kwargs)
-            .returning(self.model)
         )
-        updated_instance = result.scalar_one_or_none()
+        
+        # 刷新会话以获取最新数据
+        await self.session.flush()
+        
+        # 重新查询更新后的记录
+        updated_instance = await self.get_by_id(id)
         
         if updated_instance:
             await self.session.refresh(updated_instance)

@@ -13,3 +13,5 @@ asyncio
 pymysql
 redis
 openai
+json_repair
+cryptography

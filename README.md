@@ -54,6 +54,19 @@ python main.py
 # 或：uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
+## React Native 客户端（Expo）
+移动端工程位于 `ReactNative/myApp`，已对接后台 `journal / flash / insights / tracking` 接口。
+
+```bash
+cd ReactNative/myApp
+npm install                 # 或 pnpm install / yarn
+npx expo start              # 选择 iOS 模拟器 / Android 模拟器 / Expo Go
+```
+
+- API 基址：默认 `http://localhost:8000`，可通过 `app.json -> expo.extra.apiBaseUrl` 或环境变量 `EXPO_PUBLIC_API_URL` 覆盖
+- 鉴权：登录页填写 `X-User-Id`（会员类型可选 `X-Member-Tier`），未填则使用 mock 用户
+- 启动前确保后端已运行，`GET /journal/entries` 可正常返回
+
 ## 环境变量
 通过 `.env` 或系统环境变量配置（关键项）：
 
@@ -70,6 +83,10 @@ python main.py
 | DEFAULT_LLM_PROVIDER | 默认 LLM 提供商 | siliconflow |
 | DEFAULT_LLM_MODEL_KEY | 默认模型键 | kimi-k2 |
 | LLM_PROVIDERS | LLM 提供商配置（含 api_key/base_url/models） | config.py 中提供示例 |
+| ALIYUN_ACCESS_KEY_ID / SECRET | 阿里云占位凭证，用于ASR/Green封装 | your-aliyun-ak-id / your-aliyun-ak-secret |
+| ALIYUN_REGION | 阿里云区域 | cn-shanghai |
+| ALIYUN_ASR_APP_KEY / ENDPOINT | 语音识别占位配置 | your-asr-app-key / http://nls-gateway.cn-shanghai.aliyuncs.com |
+| ALIYUN_GREEN_ENDPOINT | 文本/图片内容安全占位配置 | green-cip.cn-shanghai.aliyuncs.com |
 
 提示：线上环境请覆盖默认的数据库、Redis 与 LLM api_key。
 
@@ -80,15 +97,18 @@ python main.py
 
 ## API 说明
 - 健康检查：`GET /health`
-- 日记与洞察：`routers/journal.py`、`routers/insights.py`
-- 标签追踪：`routers/tag_tracking.py`
-- 闪念记录：`routers/flash.py`
+- 日记：`POST /journal/entries`（支持文本/语音占位、图片上传状态、内容安全占位），`POST /journal/entries/{id}/retry`，`GET /journal/history`（按日期范围分页历史），`GET /journal/calendar`（按月日级统计）
+- 洞察：`/insights/cards` 系列（每日寄语/每周情绪/感恩），新增 `POST /insights/cards/{id}/hide|show|share`
+- 洞察配置：`GET /insights/configs`、`POST /insights/configs`、`POST /insights/configs/{id}/toggle`（自定义洞察占位，限10个）
+- 标签追踪：`GET /tracking/overview`、`GET /tracking/tag/{tag_id}`，返回 `has_enough_data` 元信息，新用户数据不足时返回空数据
+- 闪光时刻：`GET /flash/moments`、`GET /flash/moments/{id}`、`POST /flash/moments/{id}/share`（仅展示成功且可见的积极记录）
 - OpenAPI 文档：`/docs` 或 `/redoc`（仅非 online 环境）
 
 ## 开发约定
 - 导入顺序：标准库 → 第三方库 → 项目内部（见项目规则）
 - 业务逻辑放在 `routers/services`，数据访问通过 `storage/repositories`
 - LLM 提示词集中在 `prompt.py`，采用占位符模板统一管理
+- 内容安全/语音识别使用阿里云占位封装（`integrations/aliyun`），当前不调用真实外部接口
 
 ## 常见问题
 - **无法连接数据库/Redis**：确认服务已启动，检查连接串与账号权限

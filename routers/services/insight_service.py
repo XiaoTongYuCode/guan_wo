@@ -33,6 +33,12 @@ logger = logging.getLogger(__name__)
 
 class InsightService:
     """洞察服务类"""
+    SYSTEM_DEFAULT_CONFIGS = [
+        {"card_type": "daily_affirmation", "name": "每日寄语", "time_range": "daily"},
+        {"card_type": "weekly_emotion_map", "name": "每周情绪地图", "time_range": "weekly"},
+        {"card_type": "weekly_gratitude_list", "name": "每周感恩清单", "time_range": "weekly"},
+    ]
+    CUSTOM_SORT_BASE = 100
     
     def __init__(self, session: AsyncSession):
         """
@@ -46,6 +52,47 @@ class InsightService:
         self.card_repo = InsightCardRepository(session)
         self.config_repo = InsightCardConfigRepository(session)
         self.llm_client = LLMClient()
+
+    async def _ensure_default_configs(self, user_id: str) -> Dict[str, InsightCardConfig]:
+        """
+        确保系统默认洞察配置存在
+        """
+        configs = await self.config_repo.get_by_user_id(user_id, is_enabled=None, order_by_sort=False)
+        by_type = {cfg.card_type: cfg for cfg in configs if cfg.is_system}
+        created_or_updated: Dict[str, InsightCardConfig] = {}
+
+        for idx, meta in enumerate(self.SYSTEM_DEFAULT_CONFIGS):
+            card_type = meta["card_type"]
+            existing = by_type.get(card_type)
+            if existing:
+                if not existing.is_system or existing.sort_order != idx:
+                    updated = await self.config_repo.update_by_id(
+                        existing.id,
+                        is_system=True,
+                        sort_order=idx
+                    )
+                    created_or_updated[card_type] = updated or existing
+                else:
+                    created_or_updated[card_type] = existing
+                continue
+
+            created = await self.config_repo.create(
+                user_id=user_id,
+                name=meta["name"],
+                card_type=card_type,
+                time_range=meta["time_range"],
+                prompt="",
+                sort_order=idx,
+                is_enabled=True,
+                is_system=True
+            )
+            created_or_updated[card_type] = created
+
+        return created_or_updated
+
+    async def _get_system_config(self, user_id: str, card_type: str) -> Optional[InsightCardConfig]:
+        configs = await self._ensure_default_configs(user_id)
+        return configs.get(card_type)
     
     async def generate_daily_affirmation(
         self,
@@ -67,6 +114,10 @@ class InsightService:
         if target_date is None:
             target_date = date.today() - timedelta(days=1)
         
+        config = await self._get_system_config(user_id, "daily_affirmation")
+        if not config or not config.is_enabled:
+            return None
+
         # 检查是否已生成
         data_start = datetime.combine(target_date, datetime.min.time())
         data_end = datetime.combine(target_date, datetime.max.time())
@@ -106,6 +157,7 @@ class InsightService:
             content_json={"affirmation": affirmation},
             data_start_time=data_start,
             data_end_time=data_end,
+            config_id=config.id,
             is_viewed=False,
             is_hidden=False
         )
@@ -141,6 +193,10 @@ class InsightService:
         data_start = datetime.combine(week_start, datetime.min.time())
         data_end = datetime.combine(week_end, datetime.max.time())
         
+        config = await self._get_system_config(user_id, "weekly_emotion_map")
+        if not config or not config.is_enabled:
+            return None
+
         # 检查是否已生成
         existing = await self.card_repo.check_card_exists(
             user_id=user_id,
@@ -184,6 +240,7 @@ class InsightService:
             },
             data_start_time=data_start,
             data_end_time=data_end,
+            config_id=config.id,
             is_viewed=False,
             is_hidden=False
         )
@@ -219,6 +276,10 @@ class InsightService:
         data_start = datetime.combine(week_start, datetime.min.time())
         data_end = datetime.combine(week_end, datetime.max.time())
         
+        config = await self._get_system_config(user_id, "weekly_gratitude_list")
+        if not config or not config.is_enabled:
+            return None
+
         # 检查是否已生成
         existing = await self.card_repo.check_card_exists(
             user_id=user_id,
@@ -258,6 +319,7 @@ class InsightService:
             content_json={"events": selected_events},
             data_start_time=data_start,
             data_end_time=data_end,
+            config_id=config.id,
             is_viewed=False,
             is_hidden=False
         )
@@ -433,22 +495,56 @@ class InsightService:
         
         Args:
             user_id: 用户ID
-            is_hidden: 是否包含隐藏的卡片
+            is_hidden: 是否包含隐藏的卡片（False表示只返回未隐藏的）
             card_type: 卡片类型过滤（可选）
             
         Returns:
             洞察卡片列表
         """
-        if card_type:
-            return await self.card_repo.get_by_card_type(
-                user_id=user_id,
-                card_type=card_type
-            )
-        else:
-            return await self.card_repo.get_by_user_id(
-                user_id=user_id,
-                is_hidden=is_hidden
-            )
+        try:
+            await self._ensure_default_configs(user_id)
+            configs = await self.config_repo.get_by_user_id(user_id, is_enabled=None, order_by_sort=False)
+            system_config_map = {cfg.card_type: cfg for cfg in configs if cfg.is_system}
+            custom_config_map = {cfg.id: cfg for cfg in configs if not cfg.is_system}
+            enabled_system_types = {cfg.card_type for cfg in configs if cfg.is_system and cfg.is_enabled}
+            disabled_system_types = {cfg.card_type for cfg in configs if cfg.is_system and not cfg.is_enabled}
+            enabled_custom_ids = {cfg.id for cfg in configs if not cfg.is_system and cfg.is_enabled}
+
+            if card_type:
+                cards = await self.card_repo.get_by_card_type(
+                    user_id=user_id,
+                    card_type=card_type
+                )
+                # 当指定 card_type 时，也需要根据 is_hidden 过滤
+                if is_hidden is False:
+                    cards = [card for card in cards if not card.is_hidden]
+            else:
+                cards = await self.card_repo.get_by_user_id(
+                    user_id=user_id,
+                    is_hidden=is_hidden
+                )
+
+            filtered = []
+            for card in cards:
+                try:
+                    if card.config_id:
+                        cfg = custom_config_map.get(card.config_id) or system_config_map.get(card.card_type)
+                        if cfg and not cfg.is_enabled:
+                            continue
+                        if cfg and not cfg.is_system and cfg.id not in enabled_custom_ids:
+                            continue
+                    else:
+                        if card.card_type in disabled_system_types and card.card_type not in enabled_system_types:
+                            continue
+                    filtered.append(card)
+                except Exception as e:
+                    logger.warning(f"过滤卡片时出错: card_id={card.id}, error={str(e)}")
+                    continue
+
+            return filtered
+        except Exception as e:
+            logger.error(f"get_user_cards 失败: user_id={user_id}, error={str(e)}", exc_info=True)
+            raise
     
     async def get_card_detail(self, card_id: str, user_id: str) -> Optional[InsightCard]:
         """
@@ -465,4 +561,125 @@ class InsightService:
         if card and card.user_id == user_id:
             return card
         return None
+    
+    async def hide_card(self, card_id: str, user_id: str) -> Optional[InsightCard]:
+        """隐藏卡片"""
+        card = await self.card_repo.get_by_id(card_id)
+        if not card or card.user_id != user_id:
+            return None
+        return await self.card_repo.mark_as_hidden(card_id)
+    
+    async def unhide_card(self, card_id: str, user_id: str) -> Optional[InsightCard]:
+        """取消隐藏卡片"""
+        card = await self.card_repo.get_by_id(card_id)
+        if not card or card.user_id != user_id:
+            return None
+        return await self.card_repo.unhide(card_id)
+    
+    async def increment_share(self, card_id: str, user_id: str) -> Optional[InsightCard]:
+        """分享计数增加"""
+        card = await self.card_repo.get_by_id(card_id)
+        if not card or card.user_id != user_id:
+            return None
+        return await self.card_repo.increment_share_count(card_id)
+    
+    async def list_configs(self, user_id: str) -> List[InsightCardConfig]:
+        """获取用户洞察配置列表"""
+        await self._ensure_default_configs(user_id)
+        return await self.config_repo.get_by_user_id(user_id, is_enabled=None, order_by_sort=True)
 
+    async def get_config(self, config_id: str, user_id: str) -> Optional[InsightCardConfig]:
+        """获取单个配置详情"""
+        config = await self.config_repo.get_by_id(config_id)
+        if not config or config.user_id != user_id:
+            return None
+        return config
+    
+    async def create_config(
+        self,
+        user_id: str,
+        name: str,
+        time_range: str,
+        prompt: str
+    ) -> InsightCardConfig:
+        """创建自定义洞察配置，限制最多10个"""
+        if time_range not in {"daily", "weekly", "monthly"}:
+            raise ValueError("time_range需为daily/weekly/monthly")
+        current_count = await self.config_repo.count_user_configs(user_id)
+        if current_count >= 10:
+            raise ValueError("自定义洞察最多10个")
+        sort_order = self.CUSTOM_SORT_BASE + current_count
+        return await self.config_repo.create(
+            user_id=user_id,
+            name=name,
+            time_range=time_range,
+            prompt=prompt,
+            sort_order=sort_order,
+            card_type="custom",
+            is_system=False
+        )
+
+    async def update_config(
+        self,
+        config_id: str,
+        user_id: str,
+        name: Optional[str] = None,
+        time_range: Optional[str] = None,
+        prompt: Optional[str] = None
+    ) -> Optional[InsightCardConfig]:
+        """更新自定义洞察配置"""
+        config = await self.config_repo.get_by_id(config_id)
+        if not config or config.user_id != user_id or config.is_system:
+            return None
+        if time_range and time_range not in {"daily", "weekly", "monthly"}:
+            raise ValueError("time_range需为daily/weekly/monthly")
+
+        update_data: Dict[str, Any] = {}
+        if name is not None:
+            update_data["name"] = name
+        if time_range is not None:
+            update_data["time_range"] = time_range
+        if prompt is not None:
+            update_data["prompt"] = prompt
+        if not update_data:
+            return config
+        return await self.config_repo.update_by_id(config_id, **update_data)
+
+    async def delete_config(self, config_id: str, user_id: str) -> bool:
+        """删除配置：系统默认仅隐藏，自定义直接删除"""
+        config = await self.config_repo.get_by_id(config_id)
+        if not config or config.user_id != user_id:
+            return False
+        if config.is_system:
+            await self.config_repo.update_by_id(config_id, is_enabled=False)
+            return True
+        return await self.config_repo.delete_by_id(config_id)
+
+    async def set_config_enabled(self, config_id: str, user_id: str, is_enabled: bool) -> Optional[InsightCardConfig]:
+        """启用/禁用洞察配置"""
+        config = await self.config_repo.get_by_id(config_id)
+        if not config or config.user_id != user_id:
+            return None
+        return await self.config_repo.update_by_id(config_id, is_enabled=is_enabled)
+
+    async def reorder_configs(self, user_id: str, config_ids: List[str]) -> List[InsightCardConfig]:
+        """重排自定义洞察配置顺序"""
+        if not config_ids:
+            return []
+        configs = await self.config_repo.query_by_filters(filters={"id": config_ids})
+        allowed_ids = {cfg.id for cfg in configs if cfg.user_id == user_id and not cfg.is_system}
+        if len(allowed_ids) != len(config_ids):
+            raise ValueError("配置ID不合法或包含系统默认配置")
+        order_map = {
+            config_id: self.CUSTOM_SORT_BASE + idx
+            for idx, config_id in enumerate(config_ids)
+        }
+        await self.config_repo.update_sort_orders(order_map)
+        return await self.config_repo.get_by_user_id(user_id, is_enabled=None, order_by_sort=True)
+    
+    async def toggle_config(self, config_id: str, user_id: str) -> Optional[InsightCardConfig]:
+        """切换配置启用状态"""
+        config = await self.config_repo.get_by_id(config_id)
+        if not config or config.user_id != user_id:
+            return None
+        return await self.config_repo.toggle_enabled(config_id)

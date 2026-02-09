@@ -96,7 +96,7 @@ class InsightCardConfigRepository(BaseRepository[InsightCardConfig]):
         Returns:
             配置数量
         """
-        return await self.count(user_id=user_id)
+        return await self.count(user_id=user_id, is_system=False)
     
     async def update_sort_orders(
         self,
@@ -136,4 +136,3 @@ class InsightCardConfigRepository(BaseRepository[InsightCardConfig]):
             return await self.update_by_id(config_id, is_enabled=not config.is_enabled)
         
         return None
-

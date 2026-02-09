@@ -187,6 +187,12 @@ class InsightCardRepository(BaseRepository[InsightCard]):
         """
         return await self.update_by_id(card_id, is_hidden=True)
     
+    async def unhide(self, card_id: str) -> Optional[InsightCard]:
+        """
+        取消隐藏卡片
+        """
+        return await self.update_by_id(card_id, is_hidden=False)
+    
     async def increment_share_count(self, card_id: str) -> Optional[InsightCard]:
         """
         增加分享次数

@@ -157,6 +157,52 @@ async def test_entry_tag_operations():
         return True
 
 
+async def test_entry_range_and_count():
+    """测试时间范围查询与计数"""
+    print("\n=== 测试时间范围查询与计数 ===")
+
+    async for session in get_session():
+        repo = EntryRepository(session)
+        now = datetime.utcnow()
+        start_time = now - timedelta(days=1)
+        end_time = now + timedelta(days=1)
+
+        entry1 = await repo.create(
+            user_id="range_user_001",
+            content="范围测试1",
+            status="success",
+            created_at=now - timedelta(hours=1)
+        )
+        entry2 = await repo.create(
+            user_id="range_user_001",
+            content="范围测试2",
+            status="failed",
+            created_at=now
+        )
+
+        entries = await repo.get_by_date_range(
+            user_id="range_user_001",
+            start_time=start_time,
+            end_time=end_time,
+            limit=10,
+            offset=0
+        )
+        print(f"✓ 按范围查询到 {len(entries)} 条")
+
+        count_all = await repo.count_by_user_and_date_range(
+            user_id="range_user_001",
+            start_time=start_time,
+            end_time=end_time
+        )
+        print(f"✓ 总数统计: {count_all}")
+
+        await repo.delete_by_id(entry1.id)
+        await repo.delete_by_id(entry2.id)
+        print("✓ 清理范围测试数据")
+
+        return True
+
+
 async def test_insight_card_operations():
     """测试InsightCard操作"""
     print("\n=== 测试InsightCard操作 ===")
@@ -248,6 +294,7 @@ async def main():
         await test_entry_operations()
         await test_tag_operations()
         await test_entry_tag_operations()
+        await test_entry_range_and_count()
         await test_insight_card_operations()
         await test_insight_config_operations()
         

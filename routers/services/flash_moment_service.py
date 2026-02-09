@@ -58,6 +58,10 @@ class FlashMomentService:
             limit=limit,
             offset=offset
         )
+        entries = [
+            e for e in entries
+            if getattr(e, "status", "success") == "success" and getattr(e, "is_visible", True)
+        ]
         
         # 加载图片信息
         for entry in entries:
@@ -94,10 +98,24 @@ class FlashMomentService:
         
         if entry.emotion != "positive":
             return None
+        if entry.status != "success" or not entry.is_visible:
+            return None
         
         # 加载图片信息
         images = await self.image_repo.get_by_entry_id(entry.id)
         entry.images = images
         
         return entry
+    
+    async def increment_share(self, entry_id: str, user_id: str) -> Optional[Entry]:
+        """
+        增加闪光时刻的分享次数
+        """
+        entry = await self.entry_repo.get_by_id(entry_id)
+        if not entry or entry.user_id != user_id:
+            return None
+        if entry.emotion != "positive" or entry.status != "success" or not entry.is_visible:
+            return None
+        new_count = (entry.share_count or 0) + 1
+        return await self.entry_repo.update_by_id(entry_id, share_count=new_count)
 

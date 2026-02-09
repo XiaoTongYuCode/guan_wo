@@ -34,6 +34,7 @@ class Entry(Base):
     word_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="字数统计")
     audio_duration: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="语音时长，秒")
     source_type: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, comment="来源：text/voice")
+    share_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="分享次数")
     
     # 关系定义
     images: Mapped[list["EntryImage"]] = relationship("EntryImage", back_populates="entry", cascade="all, delete-orphan")

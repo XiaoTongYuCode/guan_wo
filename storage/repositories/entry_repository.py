@@ -54,7 +54,8 @@ class EntryRepository(BaseRepository[Entry]):
         end_time: datetime,
         emotion: Optional[str] = None,
         limit: Optional[int] = None,
-        offset: Optional[int] = None
+        offset: Optional[int] = None,
+        order_desc: bool = True
     ) -> List[Entry]:
         """
         根据时间范围获取记录
@@ -83,7 +84,7 @@ class EntryRepository(BaseRepository[Entry]):
             limit=limit,
             offset=offset,
             order_by="created_at",
-            order_desc=True
+            order_desc=order_desc
         )
     
     async def get_by_emotion(
@@ -214,4 +215,44 @@ class EntryRepository(BaseRepository[Entry]):
             }
         
         return {"count": 0, "total_words": 0, "average_words": 0.0}
+
+    async def get_daily_stats(
+        self,
+        user_id: str,
+        start_time: datetime,
+        end_time: datetime
+    ) -> List[Dict[str, Any]]:
+        """
+        按日期聚合记录数量与字数
+        """
+        # MySQL兼容：使用实际的列表达式而不是别名进行GROUP BY
+        date_expr = func.date(Entry.created_at)
+        query = (
+            select(
+                date_expr.label("day"),
+                func.count(Entry.id).label("count"),
+                func.sum(Entry.word_count).label("word_count")
+            )
+            .where(
+                and_(
+                    Entry.user_id == user_id,
+                    Entry.created_at >= start_time,
+                    Entry.created_at <= end_time
+                )
+            )
+            .group_by(date_expr)
+            .order_by(date_expr)
+        )
+
+        result = await self.session.execute(query)
+        rows = result.all()
+
+        return [
+            {
+                "date": row.day.isoformat() if row.day else None,
+                "count": row.count or 0,
+                "word_count": int(row.word_count or 0)
+            }
+            for row in rows
+        ]
 

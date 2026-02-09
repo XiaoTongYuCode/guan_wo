@@ -3,11 +3,13 @@ LLM客户端模块
 基于AsyncOpenAI封装统一的LLM调用接口
 """
 # 标准库导包
+import json
 import logging
 from typing import Optional, List, Dict, Any
 
 # 第三方库导包
 from openai import AsyncOpenAI
+import json_repair
 
 # 项目内部导包
 from .config import llm_config, LLMConfig
@@ -72,6 +74,7 @@ class LLMClient:
         model_key: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: Optional[int] = None,
+        timeout: int = 30,
     ) -> str:
         """
         发送聊天请求
@@ -102,6 +105,7 @@ class LLMClient:
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
+                timeout=timeout,
             )
             
             content = response.choices[0].message.content or ""
@@ -145,15 +149,12 @@ class LLMClient:
         )
         
         # 尝试解析JSON响应
-        import json
         try:
-            # 移除可能的markdown代码块标记
+            # 若存在 Markdown 的 ```json 代码块，则尝试提取其中的内容
             if "```json" in response_text:
-                response_text = response_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in response_text:
-                response_text = response_text.split("```")[1].split("```")[0].strip()
+                response_text = response_text.split("```json", 1)[1].split("```", 1)[0].strip()
             
-            result = json.loads(response_text)
+            result = json_repair.loads(response_text)
             
             # 验证和规范化结果
             events = result.get("events", [])
@@ -177,7 +178,7 @@ class LLMClient:
             }
             
         except json.JSONDecodeError:
-            logger.warning(f"LLM返回的JSON解析失败，使用默认值。响应: {response_text[:200]}")
+            logger.warning(f"LLM返回的JSON解析失败，使用默认值。响应: {response_text}")
             # 如果解析失败，返回默认值
             return {
                 "events": [content[:50] + "..." if len(content) > 50 else content],

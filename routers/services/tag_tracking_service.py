@@ -14,7 +14,6 @@ from sqlalchemy import select, func, and_
 # 项目内部导包
 from storage.models.entry import Entry
 from storage.models.entry_tag import EntryTag
-from storage.models.tag import Tag
 from storage.repositories.entry_repository import EntryRepository
 from storage.repositories.entry_tag_repository import EntryTagRepository
 from storage.repositories.tag_repository import TagRepository
@@ -25,6 +24,9 @@ logger = logging.getLogger(__name__)
 
 class TagTrackingService:
     """标签追踪服务类"""
+    
+    MIN_RECORDS = 5
+    MIN_ACTIVE_DAYS = 3
     
     def __init__(self, session: AsyncSession):
         """
@@ -37,6 +39,30 @@ class TagTrackingService:
         self.entry_repo = EntryRepository(session)
         self.tag_repo = TagRepository(session)
         self.entry_tag_repo = EntryTagRepository(session)
+    
+    async def has_minimum_data(
+        self,
+        user_id: str,
+        start_date: date,
+        end_date: date
+    ) -> Dict[str, Any]:
+        """
+        判断数据是否满足展示阈值
+        """
+        start_time = datetime.combine(start_date, datetime.min.time())
+        end_time = datetime.combine(end_date, datetime.max.time())
+        
+        entries = await self.entry_repo.get_by_date_range(
+            user_id=user_id,
+            start_time=start_time,
+            end_time=end_time
+        )
+        days = {e.created_at.date() for e in entries}
+        return {
+            "has_enough": len(entries) >= self.MIN_RECORDS and len(days) >= self.MIN_ACTIVE_DAYS,
+            "entry_count": len(entries),
+            "active_days": len(days)
+        }
     
     async def get_activity_heatmap(
         self,
@@ -94,7 +120,8 @@ class TagTrackingService:
         self,
         user_id: str,
         start_date: date,
-        end_date: date
+        end_date: date,
+        allow_all_tags: bool = False
     ) -> List[Dict[str, Any]]:
         """
         获取标签气泡图数据
@@ -148,6 +175,9 @@ class TagTrackingService:
                 "color": row.color,
                 "event_count": row.event_count
             })
+        
+        if not allow_all_tags:
+            bubble_data = bubble_data[:2]  # 免费用户仅返回“全部”及1个标签占位
         
         return bubble_data
     

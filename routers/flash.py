@@ -18,9 +18,10 @@ from models import (
     FlashMomentResponse,
     EntryImageResponse
 )
-from storage.database import get_session
 from routers.services.flash_moment_service import FlashMomentService
 from routers.services.journal_service import JournalService
+from storage.database import get_session
+from utils.auth import get_current_user_or_mock
 
 # 配置日志
 logger = logging.getLogger(__name__)
@@ -64,6 +65,7 @@ def _entry_to_flash_moment_response(entry) -> FlashMomentResponse:
         content=entry.content,
         content_summary=content_summary,
         emotion=entry.emotion or "positive",
+        share_count=getattr(entry, "share_count", 0),
         images=images,
         created_at=entry.created_at
     )
@@ -145,4 +147,43 @@ async def get_flash_moment_detail(
     except Exception as e:
         logger.error(f"获取闪光时刻详情失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取闪光时刻详情失败: {str(e)}")
+
+
+@router.post("/moments/{entry_id}/share", response_model=FlashMomentDetailResponse, summary="闪光时刻分享计数")
+async def share_flash_moment(
+    entry_id: str,
+    user_info: UserInfo = Depends(get_current_user_or_mock),
+    session: AsyncSession = Depends(get_session)
+):
+    """
+    分享闪光时刻，计数+1
+    """
+    try:
+        user_id = user_info.user_id or user_info.mobile
+        
+        flash_service = FlashMomentService(session)
+        entry = await flash_service.increment_share(entry_id, user_id)
+        
+        if not entry:
+            raise HTTPException(status_code=404, detail="闪光时刻不存在或无权限")
+        
+        # 加载关联数据
+        journal_service = JournalService(session)
+        await journal_service._load_entry_relations(entry)
+        
+        # 转换为响应格式
+        from routers.journal import _entry_to_response
+        entry_response = _entry_to_response(entry)
+        
+        return FlashMomentDetailResponse(
+            success=True,
+            message="分享计数+1",
+            data=entry_response
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"闪光时刻分享计数失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"闪光时刻分享计数失败: {str(e)}")
 

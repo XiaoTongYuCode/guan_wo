@@ -23,10 +23,12 @@ class InsightCardConfig(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False, comment="洞察名称")
+    card_type: Mapped[str] = mapped_column(String(50), nullable=False, default="custom", comment="卡片类型：daily_affirmation/weekly_emotion_map/weekly_gratitude_list/custom")
     time_range: Mapped[str] = mapped_column(String(20), nullable=False, comment="时间范围：daily/weekly/monthly")
-    prompt: Mapped[str] = mapped_column(Text, nullable=False, comment="洞察提示词")
+    prompt: Mapped[str] = mapped_column(Text, nullable=False, default="", comment="洞察提示词（系统默认可为空）")
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="排序顺序")
     is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, comment="是否启用")
+    is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="是否系统默认洞察")
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -39,4 +41,3 @@ class InsightCardConfig(Base):
     
     def __repr__(self):
         return f"<InsightCardConfig(id={self.id}, user_id={self.user_id}, name={self.name})>"
-

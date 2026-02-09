@@ -69,6 +69,7 @@ def _get_week_range(range_type: str) -> tuple[date, date]:
 @router.get("/overview", response_model=TrackingOverviewResponse, summary="获取追踪概览")
 async def get_tracking_overview(
     range_type: str = Query("week", description="范围类型：week/month"),
+    is_paid: bool = Query(False, description="是否付费用户"),
     user_info: UserInfo = Depends(get_current_user_or_mock),
     session: AsyncSession = Depends(get_session)
 ):
@@ -82,20 +83,25 @@ async def get_tracking_overview(
         start_date, end_date = _get_week_range(range_type)
         
         tracking_service = TagTrackingService(session)
+        data_health = await tracking_service.has_minimum_data(user_id, start_date, end_date)
         
         # 获取热力图数据
-        heatmap_data = await tracking_service.get_activity_heatmap(
-            user_id=user_id,
-            start_date=start_date,
-            end_date=end_date
-        )
-        
-        # 获取标签气泡图数据
-        bubble_data = await tracking_service.get_tag_bubble_chart(
-            user_id=user_id,
-            start_date=start_date,
-            end_date=end_date
-        )
+        heatmap_data = []
+        bubble_data = []
+        if data_health["has_enough"]:
+            heatmap_data = await tracking_service.get_activity_heatmap(
+                user_id=user_id,
+                start_date=start_date,
+                end_date=end_date
+            )
+            
+            # 获取标签气泡图数据
+            bubble_data = await tracking_service.get_tag_bubble_chart(
+                user_id=user_id,
+                start_date=start_date,
+                end_date=end_date,
+                allow_all_tags=is_paid
+            )
         
         return TrackingOverviewResponse(
             success=True,
@@ -105,7 +111,11 @@ async def get_tracking_overview(
                 "bubble_chart": bubble_data,
                 "range_type": range_type,
                 "start_date": start_date.isoformat(),
-                "end_date": end_date.isoformat()
+                "end_date": end_date.isoformat(),
+                "has_enough_data": data_health["has_enough"],
+                "entry_count": data_health["entry_count"],
+                "active_days": data_health["active_days"],
+                "is_paid": is_paid
             }
         )
         
@@ -118,6 +128,7 @@ async def get_tracking_overview(
 async def get_tag_tracking(
     tag_id: str,
     range_type: str = Query("week", description="范围类型：week/month"),
+    is_paid: bool = Query(False, description="是否付费用户"),
     user_info: UserInfo = Depends(get_current_user_or_mock),
     session: AsyncSession = Depends(get_session)
 ):
@@ -131,6 +142,31 @@ async def get_tag_tracking(
         start_date, end_date = _get_week_range(range_type)
         
         tracking_service = TagTrackingService(session)
+        data_health = await tracking_service.has_minimum_data(user_id, start_date, end_date)
+        if not data_health["has_enough"]:
+            return TagTrackingResponse(
+                success=True,
+                message="数据不足，返回空数据",
+                data={
+                    "emotion_distribution": {
+                        "positive": 0,
+                        "neutral": 0,
+                        "negative": 0,
+                        "total": 0,
+                        "positive_percent": 0.0,
+                        "neutral_percent": 0.0,
+                        "negative_percent": 0.0
+                    },
+                    "emotion_curve": [],
+                    "range_type": range_type,
+                    "start_date": start_date.isoformat(),
+                    "end_date": end_date.isoformat(),
+                    "has_enough_data": False,
+                    "entry_count": data_health["entry_count"],
+                    "active_days": data_health["active_days"],
+                    "is_paid": is_paid
+                }
+            )
         
         # 获取情绪分布
         emotion_dist = await tracking_service.get_emotion_distribution_by_tag(
@@ -156,7 +192,11 @@ async def get_tag_tracking(
                 "emotion_curve": emotion_curve,
                 "range_type": range_type,
                 "start_date": start_date.isoformat(),
-                "end_date": end_date.isoformat()
+                "end_date": end_date.isoformat(),
+                "has_enough_data": True,
+                "entry_count": data_health["entry_count"],
+                "active_days": data_health["active_days"],
+                "is_paid": is_paid
             }
         )
         
@@ -186,6 +226,14 @@ async def get_tag_entries(
         
         tracking_service = TagTrackingService(session)
         journal_service = JournalService(session)
+        data_health = await tracking_service.has_minimum_data(user_id, start_date, end_date)
+        if not data_health["has_enough"]:
+            return EntryListResponse(
+                success=True,
+                message="数据不足，返回空列表",
+                data=[],
+                total=0
+            )
         
         entries = await tracking_service.get_entries_by_tag_and_emotion(
             user_id=user_id,

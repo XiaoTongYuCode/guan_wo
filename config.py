@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # 服务器配置
     HOST: str = Field(default="0.0.0.0", env="HOST")
     PORT: int = Field(default=8000, env="PORT")
-    WORKERS: int = 4
+    WORKERS: int = 1
     
     # 开发环境数据库配置
     DEV_DB_HOST: str = "localhost:3306"
@@ -45,6 +45,14 @@ class Settings(BaseSettings):
     DB_MAX_CONNECTIONS: int = Field(default=20, env="DB_MAX_CONNECTIONS")
     DB_POOL_TIMEOUT: int = Field(default=30, env="DB_POOL_TIMEOUT")
     DB_POOL_RECYCLE: int = Field(default=3600, env="DB_POOL_RECYCLE")
+    
+    # 阿里云配置
+    ALIYUN_ACCESS_KEY_ID: str = Field(default="your-aliyun-ak-id", env="ALIYUN_ACCESS_KEY_ID")
+    ALIYUN_ACCESS_KEY_SECRET: str = Field(default="your-aliyun-ak-secret", env="ALIYUN_ACCESS_KEY_SECRET")
+    ALIYUN_REGION: str = Field(default="cn-shanghai", env="ALIYUN_REGION")
+    ALIYUN_ASR_APP_KEY: str = Field(default="your-asr-app-key", env="ALIYUN_ASR_APP_KEY")
+    ALIYUN_ASR_ENDPOINT: str = Field(default="http://nls-gateway.cn-shanghai.aliyuncs.com", env="ALIYUN_ASR_ENDPOINT")
+    ALIYUN_GREEN_ENDPOINT: str = Field(default="green-cip.cn-shanghai.aliyuncs.com", env="ALIYUN_GREEN_ENDPOINT")
     
     # CORS配置 - 允许所有跨域请求
     CORS_ORIGINS: List[str] = ["*"]
